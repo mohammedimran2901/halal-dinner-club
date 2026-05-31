@@ -1,24 +1,21 @@
 import { NextAuthOptions } from 'next-auth'
-import { PrismaAdapter } from '@auth/prisma-adapter'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import GoogleProvider from 'next-auth/providers/google'
 import { prisma } from './prisma'
 import { compare } from 'bcryptjs'
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
   session: {
     strategy: 'jwt',
   },
   pages: {
     signIn: '/login',
-    signUp: '/register',
     error: '/auth/error',
   },
   providers: [
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      clientId: process.env.GOOGLE_CLIENT_ID || '',
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
     }),
     CredentialsProvider({
       name: 'credentials',
@@ -61,22 +58,24 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async session({ token, session }) {
-      if (token) {
-        session.user.id = token.id
-        session.user.name = token.name
-        session.user.email = token.email
-        session.user.image = token.picture
-        session.user.role = token.role
-        session.user.subscriptionTier = token.subscriptionTier
-        session.user.subscriptionStatus = token.subscriptionStatus
+      if (token && session.user) {
+        session.user.id = token.id as string
+        session.user.name = token.name as string
+        session.user.email = token.email as string
+        session.user.image = token.picture as string
+        session.user.role = token.role as any
+        session.user.subscriptionTier = token.subscriptionTier as any
+        session.user.subscriptionStatus = token.subscriptionStatus as any
       }
 
       return session
     },
     async jwt({ token, user }) {
+      if (!token.email) return token
+      
       const dbUser = await prisma.user.findFirst({
         where: {
-          email: token.email,
+          email: token.email as string,
         },
       })
 
