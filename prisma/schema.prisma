@@ -1,0 +1,396 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== ENUMS ====================
+
+enum UserRole {
+  GUEST
+  MEMBER
+  HOST
+  ADMIN
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  PAST_DUE
+  UNPAID
+  NONE
+}
+
+enum SubscriptionTier {
+  FREE
+  MEMBER
+  HOST
+}
+
+enum EventType {
+  DINNER
+  BREAKFAST
+  BRUNCH
+  LUNCH
+}
+
+enum EventTheme {
+  GENERAL
+  CELEBRATION
+  EID
+  RAMADAN
+  SINGLES
+  NETWORKING
+  FAMILY
+  PROFESSIONAL
+  SOCIAL
+  CHARITY
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  NON_BINARY
+  PREFER_NOT_TO_SAY
+}
+
+enum GenderRestriction {
+  ANY
+  MEN
+  WOMEN
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+enum RSVPStatus {
+  GOING
+  WAITLIST
+  CANCELLED
+  ATTENDED
+  NO_SHOW
+}
+
+enum NotificationType {
+  EVENT_REMINDER
+  EVENT_UPDATE
+  EVENT_CANCELLED
+  WAITLIST_PROMOTION
+  NEW_COMMENT
+  NEW_REVIEW
+  RSVP_CONFIRMATION
+  HOST_MESSAGE
+  SYSTEM
+}
+
+// ==================== MODELS ====================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model User {
+  id                    String             @id @default(cuid())
+  name                  String?
+  email                 String             @unique
+  emailVerified         DateTime?
+  image                 String?
+  password              String?
+  
+  // Profile fields
+  bio                   String?            @db.Text
+  age                   Int?
+  gender                Gender?
+  city                  String?
+  country               String?
+  phoneNumber           String?
+  
+  // Role and subscription
+  role                  UserRole           @default(GUEST)
+  subscriptionTier      SubscriptionTier   @default(FREE)
+  subscriptionStatus    SubscriptionStatus @default(NONE)
+  subscriptionExpiresAt DateTime?
+  
+  // Stripe
+  stripeCustomerId      String?            @unique
+  stripeSubscriptionId  String?
+  
+  // Timestamps
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  
+  // Relations
+  accounts              Account[]
+  sessions              Session[]
+  hostedEvents          Event[]            @relation("EventHost")
+  rsvps                 RSVP[]
+  comments              Comment[]
+  reviews               Review[]
+  notifications         Notification[]
+  chapters              ChapterMember[]
+  
+  // Badge tracking
+  dinnersAttended       Int                @default(0)
+  dinnersHosted         Int                @default(0)
+  isFrequentHost        Boolean            @default(false)
+  isVeteranAttendee     Boolean            @default(false)
+  
+  @@index([city])
+  @@index([country])
+  @@index([subscriptionStatus])
+}
+
+model Chapter {
+  id          String          @id @default(cuid())
+  name        String
+  city        String
+  country     String
+  description String?         @db.Text
+  coverImage  String?
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  
+  // Relations
+  members     ChapterMember[]
+  events      Event[]
+  
+  @@unique([city, country])
+  @@index([city])
+  @@index([country])
+}
+
+model ChapterMember {
+  id        String    @id @default(cuid())
+  userId    String
+  chapterId String
+  joinedAt  DateTime  @default(now())
+  
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapter   Chapter   @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, chapterId])
+  @@index([userId])
+  @@index([chapterId])
+}
+
+model Event {
+  id                String           @id @default(cuid())
+  title             String
+  description       String           @db.Text
+  shortDescription  String?          @db.Text
+  
+  // Host and ownership
+  hostId            String
+  host              User             @relation("EventHost", fields: [hostId], references: [id])
+  
+  // Event details
+  type              EventType        @default(DINNER)
+  theme             EventTheme       @default(GENERAL)
+  
+  // Location
+  city              String
+  country           String
+  venueName         String?
+  address           String
+  latitude          Float?
+  longitude         Float?
+  chapterId         String?
+  chapter           Chapter?         @relation(fields: [chapterId], references: [id])
+  
+  // Date and time
+  dateTime          DateTime
+  endDateTime       DateTime?
+  timezone          String           @default("Europe/London")
+  
+  // Capacity and pricing
+  capacity          Int              @default(10)
+  price             Float            @default(0)
+  currency          String           @default("GBP")
+  hasWaitlist       Boolean          @default(true)
+  
+  // Singles event restrictions
+  isSinglesEvent    Boolean          @default(false)
+  minAge            Int?
+  maxAge            Int?
+  genderRestriction GenderRestriction @default(ANY)
+  
+  // Media
+  coverImage        String?
+  galleryImages     String[]
+  
+  // Status
+  status            EventStatus      @default(DRAFT)
+  isRecurring       Boolean          @default(false)
+  recurringPattern  String?          // e.g., "weekly", "monthly"
+  parentEventId     String?
+  
+  // Timestamps
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  
+  // Relations
+  rsvps             RSVP[]
+  comments          Comment[]
+  reviews           Review[]
+  
+  @@index([hostId])
+  @@index([city])
+  @@index([country])
+  @@index([chapterId])
+  @@index([dateTime])
+  @@index([status])
+  @@index([theme])
+  @@index([type])
+  @@index([isSinglesEvent])
+}
+
+model RSVP {
+  id         String      @id @default(cuid())
+  eventId    String
+  userId     String
+  status     RSVPStatus  @default(GOING)
+  notes      String?     @db.Text
+  
+  // Waitlist position (null if not on waitlist)
+  waitlistPosition Int?
+  
+  // Timestamps
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  
+  // Relations
+  event      Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([eventId, userId])
+  @@index([eventId])
+  @@index([userId])
+  @@index([status])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  eventId   String
+  userId    String
+  body      String   @db.Text
+  parentId  String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent    Comment? @relation("CommentReplies", fields: [parentId], references: [id])
+  replies   Comment[] @relation("CommentReplies")
+  
+  @@index([eventId])
+  @@index([userId])
+  @@index([parentId])
+  @@index([createdAt])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  eventId   String
+  userId    String
+  rating    Int      @db.SmallInt // 1-5
+  body      String?  @db.Text
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([eventId, userId])
+  @@index([eventId])
+  @@index([userId])
+  @@index([rating])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String           @db.Text
+  link      String?          // Optional link to relevant page
+  read      Boolean          @default(false)
+  metadata  Json?            // Flexible metadata for different notification types
+  
+  createdAt DateTime         @default(now())
+  
+  // Relations
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+}
+
+model EmailLog {
+  id        String   @id @default(cuid())
+  to        String
+  subject   String
+  template  String
+  status    String   // sent, failed, bounced
+  metadata  Json?
+  
+  createdAt DateTime @default(now())
+  
+  @@index([to])
+  @@index([createdAt])
+}
+
+model SiteSettings {
+  id                    String   @id @default(cuid())
+  maintenanceMode       Boolean  @default(false)
+  allowNewRegistrations Boolean  @default(true)
+  defaultMemberPrice    Float    @default(1.99)
+  defaultHostPrice      Float    @default(2.99)
+  
+  updatedAt             DateTime @updatedAt
+}
