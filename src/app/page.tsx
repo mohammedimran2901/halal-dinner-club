@@ -1,18 +1,18 @@
 import { Hero } from '@/components/landing/hero'
-import { HowItWorks } from '@/components/landing/how-it-works'
-import { FeaturedThemes } from '@/components/landing/featured-themes'
-import { Pricing } from '@/components/landing/pricing'
-import { Cities } from '@/components/landing/cities'
+import { CategoryPills } from '@/components/landing/category-pills'
+import { UpcomingEvents } from '@/components/landing/upcoming-events'
+import { JoinCommunity } from '@/components/landing/join-community'
+import { PopularCities } from '@/components/landing/popular-cities'
 import { SocialProof } from '@/components/landing/social-proof'
 
 export default function HomePage() {
   return (
     <div className="min-h-screen">
       <Hero />
-      <HowItWorks />
-      <FeaturedThemes />
-      <Pricing />
-      <Cities />
+      <CategoryPills />
+      <UpcomingEvents />
+      <JoinCommunity />
+      <PopularCities />
       <SocialProof />
     </div>
   )
